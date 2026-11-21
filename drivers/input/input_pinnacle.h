@@ -103,6 +103,7 @@ struct pinnacle_config {
     bool rotate_90, sleep_en, no_taps, no_secondary_tap, x_invert, y_invert;
     enum pinnacle_sensitivity sensitivity;
     uint8_t x_axis_z_min, y_axis_z_min;
+    uint8_t wheel_multiplier;
     const struct gpio_dt_spec dr;
 };
 
