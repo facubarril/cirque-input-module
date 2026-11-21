@@ -29,7 +29,11 @@ properties:
   pointer-multiplier:
     type: int
     default: 1
-    description: Multiplier applied to pointer movement deltas (tune cursor speed).
+    description: Numerator applied to pointer movement deltas (tune cursor speed).
+  pointer-divisor:
+    type: int
+    default: 1
+    description: Denominator applied to pointer movement deltas. Cursor speed = multiplier / divisor (e.g. 3/2 = 1.5x). Must be >= 1.
   x-axis-z-min:
     type: int
     default: 5
