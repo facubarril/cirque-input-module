@@ -231,7 +231,7 @@ static int pinnacle_era_write(const struct device *dev, const uint16_t addr, uin
 
 static void pinnacle_report_data(const struct device *dev) {
     const struct pinnacle_config *config = dev->config;
-    uint8_t packet[3];
+    uint8_t packet[4]; /* 4th byte is the scroll wheel (Intellimouse mode) */
     int ret;
     ret = pinnacle_seq_read(dev, PINNACLE_STATUS1, packet, 1);
     if (ret < 0) {
@@ -245,13 +245,13 @@ static void pinnacle_report_data(const struct device *dev) {
     if (packet[0] == 0xFF || !(packet[0] & PINNACLE_STATUS1_SW_DR)) {
         return;
     }
-    ret = pinnacle_seq_read(dev, PINNACLE_2_2_PACKET0, packet, 3);
+    ret = pinnacle_seq_read(dev, PINNACLE_2_2_PACKET0, packet, 4);
     if (ret < 0) {
         LOG_ERR("read packet: %d", ret);
         return;
     }
 
-    LOG_HEXDUMP_DBG(packet, 3, "Pinnacle Packets");
+    LOG_HEXDUMP_DBG(packet, 4, "Pinnacle Packets");
 
     struct pinnacle_data *data = dev->data;
     uint8_t btn = packet[0] &
@@ -259,6 +259,7 @@ static void pinnacle_report_data(const struct device *dev) {
 
     int8_t dx = (int8_t)packet[1];
     int8_t dy = (int8_t)packet[2];
+    int8_t dz = (int8_t)packet[3]; /* scroll wheel, two's complement */
 
     if (packet[0] & PINNACLE_PACKET0_X_SIGN) {
         WRITE_BIT(dx, 7, 1);
@@ -284,8 +285,12 @@ static void pinnacle_report_data(const struct device *dev) {
 
     data->btn_cache = btn;
 
-    input_report_rel(dev, INPUT_REL_X, dx, false, K_FOREVER);
-    input_report_rel(dev, INPUT_REL_Y, dy, true, K_FOREVER);
+    if (dz != 0) {
+        input_report_rel(dev, INPUT_REL_WHEEL, dz, true, K_FOREVER);
+    } else {
+        input_report_rel(dev, INPUT_REL_X, dx, false, K_FOREVER);
+        input_report_rel(dev, INPUT_REL_Y, dy, true, K_FOREVER);
+    }
 
     return;
 }
