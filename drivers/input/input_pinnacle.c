@@ -289,8 +289,10 @@ static void pinnacle_report_data(const struct device *dev) {
         int32_t wheel = (int32_t)dz * config->wheel_multiplier;
         input_report_rel(dev, INPUT_REL_WHEEL, wheel, true, K_FOREVER);
     } else {
-        input_report_rel(dev, INPUT_REL_X, dx, false, K_FOREVER);
-        input_report_rel(dev, INPUT_REL_Y, dy, true, K_FOREVER);
+        int32_t x = (int32_t)dx * config->pointer_multiplier;
+        int32_t y = (int32_t)dy * config->pointer_multiplier;
+        input_report_rel(dev, INPUT_REL_X, x, false, K_FOREVER);
+        input_report_rel(dev, INPUT_REL_Y, y, true, K_FOREVER);
     }
 
     return;
@@ -586,6 +588,7 @@ static int pinnacle_pm_action(const struct device *dev, enum pm_device_action ac
         .y_axis_z_min = DT_INST_PROP_OR(n, y_axis_z_min, 4),                                       \
         .sensitivity = DT_INST_ENUM_IDX_OR(n, sensitivity, PINNACLE_SENSITIVITY_1X),               \
         .wheel_multiplier = DT_INST_PROP(n, wheel_multiplier),                                     \
+        .pointer_multiplier = DT_INST_PROP(n, pointer_multiplier),                                 \
         .dr = GPIO_DT_SPEC_GET_OR(DT_DRV_INST(n), dr_gpios, {}),                                   \
     };                                                                                             \
     PM_DEVICE_DT_INST_DEFINE(n, pinnacle_pm_action);                                               \

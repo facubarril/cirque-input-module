@@ -104,6 +104,7 @@ struct pinnacle_config {
     enum pinnacle_sensitivity sensitivity;
     uint8_t x_axis_z_min, y_axis_z_min;
     uint8_t wheel_multiplier;
+    uint8_t pointer_multiplier;
     const struct gpio_dt_spec dr;
 };
 
