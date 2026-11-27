@@ -406,15 +406,32 @@ static int pinnacle_force_recalibrate(const struct device *dev) {
 }
 
 int pinnacle_set_sleep(const struct device *dev, bool enabled) {
-    uint8_t sys_cfg;
+    uint8_t sys_cfg = 0;
+    uint8_t check = 0;
     int ret = pinnacle_seq_read(dev, PINNACLE_SYS_CFG, &sys_cfg, 1);
-    if (ret < 0) {
-        LOG_ERR("can't read sys config %d", ret);
-        return ret;
+    const bool read_ok = (ret == 0 && sys_cfg != 0xFF);
+
+    if (read_ok && (((sys_cfg & PINNACLE_SYS_CFG_EN_SLEEP) != 0) == enabled)) {
+        LOG_DBG("Sleep already %s (sys_cfg 0x%02x)", enabled ? "on" : "off", sys_cfg);
+        return 0;
     }
 
-    if (((sys_cfg & PINNACLE_SYS_CFG_EN_SLEEP) != 0) == enabled) {
-        return 0;
+    if (!read_ok) {
+        /*
+         * 0xFF is what the Pinnacle returns when a transfer failed (the report
+         * path checks the same marker). Treating it as a valid register would
+         * make the "already in the requested state" shortcut above succeed
+         * without writing anything: with sleep enabled the sensor would stay
+         * awake in Idle mode (~1.5 mA) for its whole lifetime, silently.
+         *
+         * Clearing the bit is the recovery path, so still try it. Writing 0
+         * only clears RESET/SHUTDOWN/SLEEP, which is what we want there.
+         */
+        LOG_ERR("can't read sys config (ret %d, val 0x%02x)", ret, sys_cfg);
+        if (enabled) {
+            return ret < 0 ? ret : -EIO;
+        }
+        sys_cfg = 0;
     }
 
     LOG_DBG("Setting sleep: %s", (enabled ? "on" : "off"));
@@ -426,7 +443,19 @@ int pinnacle_set_sleep(const struct device *dev, bool enabled) {
         return ret;
     }
 
-    return ret;
+    /* Read back: a write the ASIC ignored must not be reported as success. */
+    ret = pinnacle_seq_read(dev, PINNACLE_SYS_CFG, &check, 1);
+    if (ret < 0 || check == 0xFF) {
+        LOG_ERR("can't verify sleep config (ret %d, val 0x%02x)", ret, check);
+        return ret < 0 ? ret : -EIO;
+    }
+    if (((check & PINNACLE_SYS_CFG_EN_SLEEP) != 0) != enabled) {
+        LOG_ERR("sleep bit did not stick (wrote 0x%02x, read 0x%02x)", sys_cfg, check);
+        return -EIO;
+    }
+
+    LOG_DBG("Sleep is now %s (sys_cfg 0x%02x)", enabled ? "on" : "off", check);
+    return 0;
 }
 
 static int pinnacle_init(const struct device *dev) {
@@ -480,9 +509,21 @@ static int pinnacle_init(const struct device *dev) {
     }
 
     if (config->sleep_en) {
-        ret = pinnacle_set_sleep(dev, true);
+        /*
+         * Do not fail init if the sensor refuses to sleep: a trackpad that
+         * draws too much is still a working trackpad, one that never
+         * initializes is not. Retry a couple of times and complain loudly.
+         */
+        for (int attempt = 0; attempt < 3; attempt++) {
+            ret = pinnacle_set_sleep(dev, true);
+            if (ret == 0) {
+                break;
+            }
+            LOG_WRN("sleep mode attempt %d failed (%d)", attempt + 1, ret);
+            k_msleep(10);
+        }
         if (ret < 0) {
-            return ret;
+            LOG_ERR("sleep mode could not be enabled, sensor stays awake");
         }
     }
 
@@ -494,8 +535,8 @@ static int pinnacle_init(const struct device *dev) {
     }
 
     ret = pinnacle_write(dev, PINNACLE_SLEEP_INTERVAL, 255);
-    if (ret <= 0) {
-        LOG_DBG("Failed to update sleep interaval %d", ret);
+    if (ret < 0) {
+        LOG_DBG("Failed to update sleep interval %d", ret);
     }
 
     uint8_t feed_cfg2 = PINNACLE_FEED_CFG2_EN_IM | PINNACLE_FEED_CFG2_EN_BTN_SCRL;
